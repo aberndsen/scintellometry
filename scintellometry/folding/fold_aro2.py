@@ -7,7 +7,7 @@ try:
     pyfftw.interfaces.cache.enable()
     from pyfftw.interfaces.scipy_fftpack import rfft, rfftfreq, irfft
     import multiprocessing
-    _NTHREADS = min(4, multiprocessing.cpu_count())
+    _NTHREADS = min(2, multiprocessing.cpu_count())
     _fftargs = {'threads': _NTHREADS,
                 'planner_effort': 'FFTW_ESTIMATE'}
 except(ImportError):
@@ -26,7 +26,7 @@ def fold(fh1, dtype, samplerate, fedge, fedge_at_top, nchan,
          nt, ntint, nskip, ngate, ntbin, ntw, dm, fref, phasepol,
          dedisperse='incoherent',
          do_waterfall=True, do_foldspec=True, verbose=True,
-         progress_interval=100, rfi_filter_raw=None, rfi_filter_power=None):
+         progress_interval=100, rfi_filter_raw=None, rfi_filter_power=None, comm=None):
     """FFT ARO data, fold by phase/time and make a waterfall series
 
     Parameters
@@ -72,8 +72,14 @@ def fold(fh1, dtype, samplerate, fedge, fedge_at_top, nchan,
         whether to give some progress information (default: True)
     progress_interval : int
         Ping every progress_interval sets
+    comm : MPI communicator. (default: None)
     """
-
+    if comm is None:
+        rank = 0
+        size = 1
+    else:
+        rank = comm.rank
+        size = comm.size
     # initialize folded spectrum and waterfall
     foldspec = np.zeros((nchan, ngate, ntbin))
     icount = np.zeros((nchan, ngate, ntbin), dtype=np.int64)
@@ -127,7 +133,7 @@ def fold(fh1, dtype, samplerate, fedge, fedge_at_top, nchan,
         dang = dang.to(u.rad).value[1:-1:2]
         dd_coh = np.exp(dang * 1j).conj().astype(np.complex64)
 
-    for j in xrange(nt):
+    for j in xrange(rank, nt, size):
         if verbose and j % progress_interval == 0:
             print('Doing {:6d}/{:6d}; time={:18.12f}'.format(
                 j+1, nt, (tstart+dtsample*j*ntint).value))  # time since start

@@ -7,8 +7,9 @@ from astropy.time import Time
 
 from scintellometry.folding.fold_aro2 import fold
 from scintellometry.folding.pmap import pmap
-from scintellometry.folding.multifile import multifile
+from scintellometry.folding.mpimultifile import mpimultifile
 
+from mpi4py import MPI
 
 MAX_RMS = 4.2
 
@@ -24,6 +25,7 @@ def rfi_filter_power(power):
 
 
 if __name__ == '__main__':
+    comm = MPI.COMM_WORLD
     # pulsar parameters
     psr = 'B1919+21'
     # psr = 'B2016+28'
@@ -114,7 +116,7 @@ if __name__ == '__main__':
     do_foldspec = True
     dedisperse = 'incoherent'
 
-    with multifile(seq_file, raw_files) as fh1:
+    with mpimultifile(seq_file, raw_files, comm=comm) as fh1:
 
         if not isinstance(phasepol, Polynomial):
             from astropy.utils.data import get_pkg_data_filename
@@ -136,41 +138,49 @@ if __name__ == '__main__':
                               time0 + nskip * recsize * 2 / samplerate,
                               time0 + (nskip+nt) * recsize * 2 / samplerate))
 
-        foldspec, icount, waterfall = fold(
+        myfoldspec, myicount, mywaterfall = fold(
             fh1, '4bit', samplerate, fedge, fedge_at_top, nchan,
             nt, ntint, nskip, ngate, ntbin, ntw, dm, fref, phasepol,
             dedisperse=dedisperse, do_waterfall=do_waterfall,
             do_foldspec=do_foldspec, verbose=verbose, progress_interval=1,
             rfi_filter_raw=rfi_filter_raw,
-            rfi_filter_power=None)  # rfi_filter_power)
+            rfi_filter_power=None, comm=comm)  # rfi_filter_power)
 
+    waterfall = np.zeros_like(mywaterfall)
     if do_waterfall:
-        nonzero = waterfall == 0.
-        waterfall -= np.where(nonzero,
-                              np.sum(waterfall, 1, keepdims=True) /
-                              np.sum(nonzero, 1, keepdims=True), 0.)
-        np.save("aro{0}waterfall_{1}.npy".format(psr, node), waterfall)
+        comm.Reduce(mywaterfall, waterfall, op=MPI.SUM, root=0)
+        if comm.rank == 0: 
+            nonzero = waterfall == 0.
+            waterfall -= np.where(nonzero,
+                                  np.sum(waterfall, 1, keepdims=True) /
+                                  np.sum(nonzero, 1, keepdims=True), 0.)
+            np.save("aro{0}waterfall_{1}.npy".format(psr, node), waterfall)
 
+    foldspec = np.zeros_like(myfoldspec)
+    icount = np.zeros_like(myicount)
     if do_foldspec:
-        np.save("aro{0}foldspec_{1}".format(psr, node), foldspec)
-        np.save("aro{0}icount_{1}".format(psr, node), icount)
-        # get normalised flux in each bin (where any were added)
-        nonzero = icount > 0
-        f2 = np.where(nonzero, foldspec/icount, 0.)
-        # subtract phase average and store
-        f2 -= np.where(nonzero,
-                       np.sum(f2, 1, keepdims=True) /
-                       np.sum(nonzero, 1, keepdims=True), 0)
-        foldspec1 = f2.sum(axis=2)
-        fluxes = foldspec1.sum(axis=0)
-        foldspec3 = f2.sum(axis=0)
+        comm.Reduce(myfoldspec, foldspec, op=MPI.SUM, root=0)
+        comm.Reduce(myicount, icount, op=MPI.SUM, root=0)
+        if comm.rank == 0:
+            np.save("aro{0}foldspec_{1}".format(psr, node), foldspec)
+            np.save("aro{0}icount_{1}".format(psr, node), icount)
+            # get normalised flux in each bin (where any were added)
+            nonzero = icount > 0
+            f2 = np.where(nonzero, foldspec/icount, 0.)
+            # subtract phase average and store
+            f2 -= np.where(nonzero,
+                           np.sum(f2, 1, keepdims=True) /
+                           np.sum(nonzero, 1, keepdims=True), 0)
+            foldspec1 = f2.sum(axis=2)
+            fluxes = foldspec1.sum(axis=0)
+            foldspec3 = f2.sum(axis=0)
 
-        with open('aro{0}flux_{1}.dat'.format(psr, node), 'w') as f:
-            for i, flux in enumerate(fluxes):
-                f.write('{0:12d} {1:12.9g}\n'.format(i+1, flux))
+            with open('aro{0}flux_{1}.dat'.format(psr, node), 'w') as f:
+                for i, flux in enumerate(fluxes):
+                    f.write('{0:12d} {1:12.9g}\n'.format(i+1, flux))
 
     plots = True
-    if plots:
+    if plots and comm.rank == 0:
         if do_waterfall:
             w = waterfall.copy()
             pmap('aro{0}waterfall_{1}.pgm'.format(psr, node),

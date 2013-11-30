@@ -7,6 +7,8 @@ import astropy.units as u
 from scintellometry.folding.fold_lofar import fold
 from scintellometry.folding.pmap import pmap
 
+from observations import Objs
+
 if __name__ == '__main__':
     # pulsar parameters
     psr = 'B1919+21'
@@ -16,12 +18,8 @@ if __name__ == '__main__':
     # psr = 'J1810+1744'
     # psr = 'B2111+46'  # not on disk yet
 
-    dm_dict = {'B0329+54': 26.833 * u.pc / u.cm**3,
-               'J1810+1744': 39.659298 * u.pc / u.cm**3,
-               'B1919+21': 12.455 * u.pc / u.cm**3,
-               'B2016+28': 14.172 * u.pc / u.cm**3,
-               'B2111+46': 141.26 * u.pc / u.cm**3}
-    phasepol_dict = {'B0329+54': Polynomial([0., 1.399541538720]),
+
+    phasepol_dict = Objs[psr].get{'B0329+54': Polynomial([0., 1.399541538720]),
                      'J1810+1744': Polynomial([5123935.3179235281,
                                                601.3858344512422,
                                                -6.8670334150772988e-06,
@@ -39,8 +37,8 @@ if __name__ == '__main__':
                      'B2016+28': Polynomial([0., 1.7922641135652]),
                      'B2111+46': 'data/polycob2111+46_lofar.dat'}
 
-    dm = dm_dict[psr]
-    phasepol = phasepol_dict[psr]
+    dm = Objs[psr]['dm']
+    phasepol = Objs[psr].get_phasepol('lofar', time0)
 
     file_dict = {
         'J1810+1744': '/mnt/data-pen1/jhessels/J1810+1744/L166111/L166111',

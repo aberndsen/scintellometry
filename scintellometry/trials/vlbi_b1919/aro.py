@@ -1,13 +1,15 @@
 from __future__ import division, print_function
 
 import numpy as np
-from numpy.polynomial import Polynomial
 import astropy.units as u
 from astropy.time import Time
 
-from scintellometry.folding.fold_aro2 import fold
+#from scintellometry.folding.fold_aro2 import fold
+from scintellometry.folding.fold import Folder
 from scintellometry.folding.pmap import pmap
-from scintellometry.folding.mpimultifile import mpimultifile
+from scintellometry.folding.arofile import multifile
+
+from observations import Objs
 
 from mpi4py import MPI
 
@@ -26,6 +28,7 @@ def rfi_filter_power(power):
 
 if __name__ == '__main__':
     comm = MPI.COMM_WORLD
+
     # pulsar parameters
     psr = 'B1919+21'
     # psr = 'B2016+28'
@@ -37,46 +40,8 @@ if __name__ == '__main__':
                  # 'J1810+1744': '2013-07-27T16:55:17'}
                  'J1810+1744': '2013-07-26T16:30:37'}
 
-    dm_dict = {'B0329+54': 26.833 * u.pc / u.cm**3,
-               'B0823+26': 19.454 * u.pc / u.cm**3,
-               'J1810+1744': 39.659298 * u.pc / u.cm**3,
-               'B1919+21': 12.455 * u.pc / u.cm**3,
-               'B1957+20': 29.11680*1.001 * u.pc / u.cm**3,
-               'B2016+28': 14.172 * u.pc / u.cm**3,
-               'noise': 0. * u.pc / u.cm**3}
-    phasepol_dict = {'2013-07-27T16:55:17':  # J1810+1744
-                     Polynomial([-1252679.1986725251,
-                                 601.39629721056895,
-                                 -6.6664639926379228e-06,
-                                 -3.005404797321569e-10,
-                                 1.3404520057431192e-13,
-                                 3.5632030706667189e-18,
-                                 -1.0874017282180807e-21,
-                                 -1.8089896985287676e-26,
-                                 4.803545433801123e-30,
-                                 1.4787240038933893e-35,
-                                 -1.1792841185454315e-38,
-                                 2.6298912108944255e-43]),
-                     '2013-07-26T16:30:37':  # J1810+1744
-                     Polynomial([-4307671.0917832768,
-                                 601.37394786958396,
-                                 -5.7640759068738662e-06,
-                                 6.2468664899676703e-10,
-                                 1.1429714466878334e-13,
-                                 -7.5191478615746773e-18,
-                                 -7.4658136316940933e-22,
-                                 -1.5804755712584567e-26,
-                                 1.3208008604369681e-29,
-                                 -9.5396362858203809e-34,
-                                 2.7444696554344206e-38,
-                                 -2.9004096379523196e-43]),
-                     # 'B1919+21':  # B1919+21/ 2013-07-25T18:14:20
-                     # Polynomial([0.5, 0.7477741603725])}
-                     'B1919+21': 'data/polycob1919+21_aro.dat'}
-
-    dt = date_dict[psr]
-    dm = dm_dict[psr]
-    phasepol = phasepol_dict[dt] if dt in phasepol_dict else phasepol_dict[psr]
+    dt = Objs[psr].nearest_obs_date('aro', Time(date_dict[psr], scale='utc'))
+    dm = Objs[psr]['dm']
 
     # fndir1 = '/mnt/b/algonquin/'
     fnbase = '/mnt/data-pen1/pen/njones/VLBI_july212013'
@@ -90,77 +55,70 @@ if __name__ == '__main__':
     #***TODO: apply LOFAR polyphase instead
     nchan = 512  # frequency channels to make
     ngate = 512  # number of bins over the pulsar period
-    recsize = 2**25  # 32MB sets
-    ntint = recsize*2//(2 * nchan)  # number of samples after FFT
     # total_size = sum(os.path.getsize(fil) for fil in raw_files)
     # nt = total_size // recsize
     nt = 1800  # each 32MB set has 2*2**25/2e8=0.33554432 s, so 180 -> ~1 min
 
-    nskip = 0
-
     ntbin = 12  # number of bins the time series is split into for folding
-    ntw = min(10200, nt*ntint)  # number of samples to combine for waterfall
-
-    samplerate = 200 * u.MHz
-
-    fedge = 200. * u.MHz
-    fedge_at_top = True
 
     fref = 150. * u.MHz  # ref. freq. for dispersion measure
-
-    # convert time to UTC; dates given in EDT
-    time0 = Time(date_dict[psr], scale='utc') + 4*u.hr
 
     verbose = 'very'
     do_waterfall = True
     do_foldspec = True
     dedisperse = 'incoherent'
 
-    with mpimultifile(seq_file, raw_files, comm=comm) as fh1:
+    with multifile(seq_file, raw_files) as fh1:
+        time0 = fh1.time0
+        phasepol = Objs[psr].get_phasepol('aro', time0)
 
-        if not isinstance(phasepol, Polynomial):
-            from astropy.utils.data import get_pkg_data_filename
-            from pulsar.predictor import Polyco
+        recsize = fh1.recsize  
+        ntint = recsize*2//(2 * nchan)    # number of samples after FFT
+        ntw = min(10200, nt*ntint)  # number of samples to combine for waterfall
 
-            polyco_file = get_pkg_data_filename(phasepol)
-            polyco = Polyco(polyco_file)
-            phasepol = polyco.phasepol(time0, rphase='fraction', t0=time0,
-                                       time_unit=u.second, convert=True)
-            nskip = int(round(
-                ((Time('2013-07-25T22:15:00', scale='utc') - time0) /
-                 (recsize * 2 / samplerate)).to(u.dimensionless_unscaled)))
-            if verbose:
-                print("Using start time {0} and phase polynomial {1}"
-                      .format(time0, phasepol))
-                print("Skipping {0} records and folding {1} records to cover "
-                      "time span {2} to {3}"
-                      .format(nskip, nt,
-                              time0 + nskip * recsize * 2 / samplerate,
-                              time0 + (nskip+nt) * recsize * 2 / samplerate))
+        samplerate = fh1.samplerate
 
-        myfoldspec, myicount, mywaterfall = fold(
-            fh1, '4bit', samplerate, fedge, fedge_at_top, nchan,
-            nt, ntint, nskip, ngate, ntbin, ntw, dm, fref, phasepol,
-            dedisperse=dedisperse, do_waterfall=do_waterfall,
-            do_foldspec=do_foldspec, verbose=verbose, progress_interval=1,
-            rfi_filter_raw=rfi_filter_raw,
-            rfi_filter_power=None, comm=comm)  # rfi_filter_power)
+        # number of records to skip
+        nskip = fh1.nskip('2013-07-25T22:15:00')    # number of records to skip
+        if verbose and comm.rank == 0:
+            print("Using start time {0} and phase polynomial {1}"
+                  .format(time0, phasepol))
+            print("Skipping {0} records and folding {1} records to cover "
+                  "time span {2} to {3}"
+                  .format(nskip, nt,
+                          time0 + nskip * recsize * 2 / samplerate,
+                          time0 + (nskip+nt) * recsize * 2 / samplerate))
 
-    waterfall = np.zeros_like(mywaterfall)
+        # set the default parameters to fold
+        # Note, some parameters may be in fh1's HDUs, or fh1.__getitem__
+        # but these are overwritten if explicitly sprecified in Folder
+        folder = Folder(
+                        fh1, nchan=nchan,
+                        nt=nt, ntint=ntint, nskip=nskip, ngate=ngate,
+                        ntbin=ntbin, ntw=ntw, dm=dm, fref=fref,
+                        phasepol=phasepol,
+                        dedisperse=dedisperse, do_waterfall=do_waterfall,
+                        do_foldspec=do_foldspec, verbose=verbose, progress_interval=1,
+                        rfi_filter_raw=rfi_filter_raw,
+                        rfi_filter_power=None)
+        myfoldspec, myicount, mywaterfall = folder(fh1, comm=comm)
+
     if do_waterfall:
+        waterfall = np.zeros_like(mywaterfall)
         comm.Reduce(mywaterfall, waterfall, op=MPI.SUM, root=0)
-        if comm.rank == 0: 
+        if comm.rank == 0:
             nonzero = waterfall == 0.
             waterfall -= np.where(nonzero,
                                   np.sum(waterfall, 1, keepdims=True) /
                                   np.sum(nonzero, 1, keepdims=True), 0.)
             np.save("aro{0}waterfall_{1}.npy".format(psr, node), waterfall)
 
-    foldspec = np.zeros_like(myfoldspec)
-    icount = np.zeros_like(myicount)
     if do_foldspec:
+        foldspec = np.zeros_like(myfoldspec)
+        icount = np.zeros_like(myicount)
         comm.Reduce(myfoldspec, foldspec, op=MPI.SUM, root=0)
         comm.Reduce(myicount, icount, op=MPI.SUM, root=0)
+
         if comm.rank == 0:
             np.save("aro{0}foldspec_{1}".format(psr, node), foldspec)
             np.save("aro{0}icount_{1}".format(psr, node), icount)

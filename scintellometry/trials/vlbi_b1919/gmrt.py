@@ -11,33 +11,27 @@ from scintellometry.folding.twofile import twofile
 from scintellometry.folding.fold_gmrt_phased import fold
 from scintellometry.folding.pmap import pmap
 
+from observations import Objs
 
 if __name__ == '__main__':
     # pulsar parameters
     psr = 'B1919+21'
-    date = '26jul2013'
+    date = '2013-07-25'
     # psr = 'B2016+28'
     # psr = 'B0329+54'
     # psr = 'B0823+26'
     # psr = 'J1810+1744'
     # psr = 'B2111+46'
-    psrname = ['0809+74','1508+55','1957+20','1919+21']
-    dm_dict = {'B0329+54': 26.833 * u.pc / u.cm**3,
-               'B0823+26': 19.454 * u.pc / u.cm**3,
-               'J1810+1744': 39.659298 * u.pc / u.cm**3,
-               'B1919+21': 12.455 * u.pc / u.cm**3,
-               'B1957+20': 29.11680*1.001 * u.pc / u.cm**3,
-               'B2016+28': 14.172 * u.pc / u.cm**3,
-               'B2111+46': 141.26 * u.pc / u.cm**3,
-               'noise': 0. * u.pc / u.cm**3}
+
     phasepol_dict = {'B0329+54': Polynomial([0., 1.399541538720]),
                      # 'B1919+21': Polynomial([0.5, 0.7477741603725]),
                      'B1919+21': 'data/polycob1919+21_gmrt.dat',
                      'B2016+28': Polynomial([0., 1.7922641135652]),
                      'B2111+46': 'data/polycob2111+46_gmrt.dat'}
 
-    dm = dm_dict[psr]
-    phasepol = phasepol_dict[psr]
+    dm = Objs[psr]['dm']
+    
+    phasepol = Objs[psr].get_phasepol('gmrt', Time(date, scale='utc'))
 
     file_template = ('/mnt/data-pen1/bahmanya/tape_6/temp1/phased_array/'
                      'node{0:2d}/' + date + '/' + psr.lower() + '.raw')

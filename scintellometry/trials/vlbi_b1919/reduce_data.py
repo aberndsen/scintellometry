@@ -80,7 +80,7 @@ def reduce(telescope, psr, date, nchan=None, ngate=None, nt=18, ntbin=12, fref=_
             waterfall -= np.where(nonzero,
                                   np.sum(waterfall, 1, keepdims=True) /
                                   np.sum(nonzero, 1, keepdims=True), 0.)
-            np.save("{0}{1}waterfall_{1}.npy"
+            np.save("{0}{1}waterfall_{2}.npy"
                     .format(telescope, psr, node), waterfall)
 
     if do_foldspec:
@@ -90,8 +90,8 @@ def reduce(telescope, psr, date, nchan=None, ngate=None, nt=18, ntbin=12, fref=_
         comm.Reduce(myicount, icount, op=MPI.SUM, root=0)
 
         if comm.rank == 0:
-            np.save("{0}{1}foldspec_{1}".format(telescope,psr, node), foldspec)
-            np.save("{0}{1}icount_{1}".format(telescope, psr, node), icount)
+            np.save("{0}{1}foldspec_{2}".format(telescope,psr, node), foldspec)
+            np.save("{0}{1}icount_{2}".format(telescope, psr, node), icount)
             # get normalised flux in each bin (where any were added)
             nonzero = icount > 0
             f2 = np.where(nonzero, foldspec/icount, 0.)
@@ -103,7 +103,7 @@ def reduce(telescope, psr, date, nchan=None, ngate=None, nt=18, ntbin=12, fref=_
             fluxes = foldspec1.sum(axis=0)
             foldspec3 = f2.sum(axis=0)
 
-            with open('{0}{1}flux_{1}.dat'.format(telescope, psr, node), 'w') as f:
+            with open('{0}{1}flux_{2}.dat'.format(telescope, psr, node), 'w') as f:
                 for i, flux in enumerate(fluxes):
                     f.write('{0:12d} {1:12.9g}\n'.format(i+1, flux))
 
@@ -111,14 +111,14 @@ def reduce(telescope, psr, date, nchan=None, ngate=None, nt=18, ntbin=12, fref=_
     if plots and comm.rank == 0:
         if do_waterfall:
             w = waterfall.copy()
-            pmap('{0}{1}waterfall_{1}.pgm'.format(telescope, psr, node),
+            pmap('{0}{1}waterfall_{2}.pgm'.format(telescope, psr, node),
                  w, 1, verbose=True)
         if do_foldspec:
-            pmap('{0}{1}folded_{1}.pgm'.format(telescope, psr, node),
+            pmap('{0}{1}folded_{2}.pgm'.format(telescope, psr, node),
                  foldspec1, 0, verbose)
-            pmap('{0}{1}foldedbin_{1}.pgm'.format(telescope, psr, node),
+            pmap('{0}{1}foldedbin_{2}.pgm'.format(telescope, psr, node),
                  f2.transpose(0,2,1).reshape(nchan,-1), 1, verbose)
-            pmap('{0}{1}folded3_{1}.pgm'.format(telescope, psr, node),
+            pmap('{0}{1}folded3_{2}.pgm'.format(telescope, psr, node),
                  foldspec3, 0, verbose)
 
 def rfi_filter_raw(raw):

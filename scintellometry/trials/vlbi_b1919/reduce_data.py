@@ -16,11 +16,13 @@ from mpi4py import MPI
 MAX_RMS = 4.2
 _fref = 150. * u.MHz  # ref. freq. for dispersion measure
 
-def reduce(telescope, psr, date, nchan=None, ngate=None, fref=_fref,
-           do_waterfall=True, do_foldspec=True, dedisperse=None):
+def reduce(telescope, psr, date, nchan=None, ngate=None, nt=18, ntbin=12, fref=_fref,
+           do_waterfall=True, do_foldspec=True, dedisperse=None,verbose=True):
 
     comm = MPI.COMM_WORLD
     Obs = obsdata()
+
+    dm = Obs['psrs'][psr]['dm']
 
     # find nearest observation to 'date'
     obskey = Obs[telescope].nearest_observation(date)
@@ -31,7 +33,10 @@ def reduce(telescope, psr, date, nchan=None, ngate=None, fref=_fref,
         files = Obs[telescope].lofar_files(obskey)
     else:
         raise NotImplementedError
-        
+    
+    # need to fix for lofar and gmrt
+    node = Obs[telescope]['node']
+    
     with multifile(seq_file, raw_files) as fh1:
         time0 = fh1.time0
         phasepol = Obs[telescope][obskey].get_phasepol(time0)
@@ -148,7 +153,10 @@ def CL_parser():
                           help="Number of channels in folded spectrum.")
     f_parser.add_argument('-ng', '--ngate', type=int, default=12,
                           help="number of bins over the pulsar period.")
-
+    f_parser.add_argument('-nt', '--nt', type=int, default=18,
+                          help="number of time bins to fold the data into. ")
+    f_parser.add_argument('-nb', '--ntbin', type=int, default=12,
+                          help="number of time bins the time series is split into for folding. ")
 
     w_parser = parser.add_argument_group("waterfall related parameters")
     w_parser.add_argument('-w','--waterfall', type=bool, default=True,
@@ -159,14 +167,18 @@ def CL_parser():
                         help="One of ['None', 'coherent', 'incoherent'].")
     d_parser.add_argument('--fref', type=float, default=_fref,
                           help="ref. freq. for dispersion measure")
+
+
+    parser.add_argument('-v', '--verbose', action='append_const', const=1)
     return parser.parse_args()
 
    
 if __name__ == '__main__':
     args = CL_parser()
+    args.verbose = 0 if args.verbose is None else sum(args.verbose)
     
     reduce(
         args.telescope, args.psr, args.date, 
-        nchan=args.nchan, ngate=args.ngate,
+        nchan=args.nchan, ngate=args.ngate, nt=args.nt, ntbin=args.ntbin,
         do_waterfall=args.waterfall, do_foldspec=args.foldspec,
-        dedisperse=args.dedisperse)
+        dedisperse=args.dedisperse, verbose=args.verbose)

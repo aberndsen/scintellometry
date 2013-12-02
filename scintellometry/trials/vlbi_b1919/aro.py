@@ -9,7 +9,7 @@ from scintellometry.folding.fold import Folder
 from scintellometry.folding.pmap import pmap
 from scintellometry.folding.arofile import multifile
 
-from observations import Objs
+from observations import obsdata
 
 from mpi4py import MPI
 
@@ -28,6 +28,7 @@ def rfi_filter_power(power):
 
 if __name__ == '__main__':
     comm = MPI.COMM_WORLD
+    Obs = obsdata()
 
     # pulsar parameters
     psr = 'B1919+21'
@@ -35,29 +36,25 @@ if __name__ == '__main__':
     # psr = 'B0329+54'
     # psr = 'B0823+26'
     # psr = 'J1810+1744'
+    dm = Obs['psrs'][psr]['dm']
+    telescope = 'aro'
     date_dict = {'B0823+26': '2013-07-24T15:06:16',
                  'B1919+21': '2013-07-25T18:14:20',
                  # 'J1810+1744': '2013-07-27T16:55:17'}
                  'J1810+1744': '2013-07-26T16:30:37'}
 
-    dt = Objs[psr].nearest_obs_date('aro', Time(date_dict[psr], scale='utc'))
-    dm = Objs[psr]['dm']
+    # find nearest observation to date_dict[psr]
+    # ARO keys are ISOT time strings
+    obskey = Obs[telescope].nearest_observation(date_dict[psr])
 
-    # fndir1 = '/mnt/b/algonquin/'
-    fnbase = '/mnt/data-pen1/pen/njones/VLBI_july212013'
-    disk_no = [2, 1, 3]
-    node = 9
-    seq_file = ('{0}/hdd{1}_node{2}/sequence.{3}.3.dat'
-                .format(fnbase, disk_no[0], node, dt))
-    raw_files = ['{0}/hdd{1}_node{2}/raw_voltage.{3}.{4}.dat'
-                 .format(fnbase, disk_no[i], node, dt, i) for i in range(3)]
+    seq_file, raw_files = Obs[telescope].aro_seq_raw_files(obskey)
 
     #***TODO: apply LOFAR polyphase instead
     nchan = 512  # frequency channels to make
     ngate = 512  # number of bins over the pulsar period
     # total_size = sum(os.path.getsize(fil) for fil in raw_files)
     # nt = total_size // recsize
-    nt = 1800  # each 32MB set has 2*2**25/2e8=0.33554432 s, so 180 -> ~1 min
+    nt = 18  # each 32MB set has 2*2**25/2e8=0.33554432 s, so 180 -> ~1 min
 
     ntbin = 12  # number of bins the time series is split into for folding
 
@@ -70,7 +67,7 @@ if __name__ == '__main__':
 
     with multifile(seq_file, raw_files) as fh1:
         time0 = fh1.time0
-        phasepol = Objs[psr].get_phasepol('aro', time0)
+        phasepol = Obs[telescope][obskey].get_phasepol(time0)
 
         recsize = fh1.recsize  
         ntint = recsize*2//(2 * nchan)    # number of samples after FFT

@@ -73,7 +73,7 @@ def fold(fh1, comm, dtype, samplerate, fedge, fedge_at_top, nchan,
         None, 'incoherent', 'coherent', 'by-channel'
     do_waterfall, do_foldspec : bool
         whether to construct waterfall, folded spectrum (default: True)
-    verbose : bool
+    verbose : bool or int
         whether to give some progress information (default: True)
     progress_interval : int
         Ping every progress_interval sets
@@ -157,11 +157,13 @@ def fold(fh1, comm, dtype, samplerate, fedge, fedge_at_top, nchan,
             # two 4-bit samples (set by dtype in caller)
             if size > 1:
                 fh1.seek(nskip*recsize + j*recsize*itemsize)
+            if verbose >= 1:
+                print("READ", j, fh1.index, fh1.fh_raw[fh1.sequence['raw'][fh1.index]].Get_position())
             raw = fromfile(fh1, dtype, recsize)
         except(EOFError, IOError) as exc:
             print("Hit {}; writing pgm's".format(exc))
             break
-        if verbose == 'very':
+        if verbose >= 2 :
             print("Read {} items".format(raw.size), end="")
 
         if rfi_filter_raw:
@@ -174,7 +176,7 @@ def fold(fh1, comm, dtype, samplerate, fedge, fedge_at_top, nchan,
             fine_cmplx = fine[1:-1].view(np.complex64)
             fine_cmplx *= dd_coh  # this overwrites parts of fine, as intended
             vals = irfft(fine, axis=0, overwrite_x=True, **_fftargs)
-            if verbose == 'very':
+            if verbose >= 2:
                 print("... dedispersed", end="")
 
         chan2 = rfft(vals.reshape(-1, nchan*2), axis=-1,
@@ -184,7 +186,7 @@ def fold(fh1, comm, dtype, samplerate, fedge, fedge_at_top, nchan,
         power = np.hstack((chan2[:,:1]+chan2[:,-1:],
                            chan2[:,1:-1].reshape(-1,nchan-1,2).sum(-1)))
 
-        if verbose == 'very':
+        if verbose >= 2:
             print("... power", end="")
 
         if rfi_filter_power:
@@ -200,7 +202,7 @@ def fold(fh1, comm, dtype, samplerate, fedge, fedge_at_top, nchan,
                 if iw < nwsize:  # add sum of corresponding samples
                     waterfall[:,iw] += np.sum(power[isr//ntw == iw],
                                               axis=0)
-            if verbose == 'very':
+            if verbose >=  2:
                 print("... waterfall", end="")
 
         if do_foldspec:
@@ -221,10 +223,10 @@ def fold(fh1, comm, dtype, samplerate, fedge, fedge_at_top, nchan,
                 icount[k, :, ibin] += np.bincount(iphase, power[:, k] != 0.,
                                                   ngate)
 
-            if verbose == 'very':
+            if verbose >= 2:
                 print("... folded", end="")
 
-        if verbose == 'very':
+        if verbose >= 2:
             print("... done")
 
     if verbose:

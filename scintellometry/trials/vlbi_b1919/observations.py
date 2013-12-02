@@ -66,6 +66,17 @@ class telescope(dict):
         raw_files = [self['raw_filestmplt'].format(fnbase, disk_no[i], node, dt, i)
                      for i in range(3)]
         return seq_file, raw_files
+
+    def lofar_file(self, key, S, P):
+        """
+        return the LOFAR files for observation 'key'
+        
+        """
+        obs = self[key]
+        fnbase = obs.get('fnbase', self.get('fnbase', None))
+        floc = obs.get('floc', None)
+        return self['filetmplt'].format(fnbase, floc, S, P)
+        
         
 
 class observation(dict):

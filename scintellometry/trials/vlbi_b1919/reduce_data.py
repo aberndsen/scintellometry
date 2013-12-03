@@ -153,7 +153,7 @@ def CL_parser():
                           help="Number of channels in folded spectrum.")
     f_parser.add_argument('-ng', '--ngate', type=int, default=12,
                           help="number of bins over the pulsar period.")
-    f_parser.add_argument('-nt', '--nt', type=int, default=18,
+    f_parser.add_argument('-nt', '--nt', type=int, default=1800,
                           help="number of time bins to fold the data into. ")
     f_parser.add_argument('-nb', '--ntbin', type=int, default=12,
                           help="number of time bins the time series is split into for folding. ")
